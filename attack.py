@@ -180,21 +180,23 @@ def create_adversarial_video(video_path, model_path, model_type, output_path,
     # Face detector
     face_detector = dlib.get_frontal_face_detector()
 
-    # Load model
-    if model_path is not None:
+    # Load model 부분 (186번째 줄 근처)
+    if model_type == "xception":
+        from network.models import model_selection
+        result = model_selection(modelname='xception', num_out_classes=2)
+        model = result[0]
+        
+        # 모델을 GPU로 이동
+        if cuda:
+            model = model.cuda()
+    else:
+        # MesoNet의 경우
         if not cuda:
-            model = torch.load(model_path, map_location = "cpu")
+            model = torch.load(model_path, map_location="cpu")
         else:
             model = torch.load(model_path)
-        print('Model found in {}'.format(model_path))
-    else:
-        print('No model found, initializing random model.')
-    if cuda:
-        print("Converting mode to cuda")
-        model = model.cuda()
-        for param in model.parameters():
-            param.requires_grad = True
-        print("Converted to cuda")
+            model = model.cuda()  # GPU로 이동
+
 
     # raise Exception()
     # Text variables

@@ -16,18 +16,18 @@ import torchvision
 
 
 def return_pytorch04_xception(pretrained=True):
-    # Raises warning "src not broadcastable to dst" but thats fine
     model = xception(pretrained=False)
     if pretrained:
-        # Load model in torch 0.4+
         model.fc = model.last_linear
         del model.last_linear
+        
         pos_model_paths = [
+            '/content/AdversarialDeepFakes/faceforensics++_models_subset/xception/ffpp_c23.pth',
             '/data2/paarth/faceforensics++_models_subset/xception-b5690688.pth',
             '/home/shehzeen/AdversarialDeepFakes/xception-b5690688.pth',
             '/Users/paarthneekhara/Dev/DeepLearning/DeepFakes/xception-b5690688.pth',
             '/Users/shehzeensh/Research/Xception/xception-b5690688.pth'
-            ]
+        ]
 
         state_dict = None
         for model_path in pos_model_paths:
@@ -35,17 +35,38 @@ def return_pytorch04_xception(pretrained=True):
                 state_dict = torch.load(model_path)
                 break
 
-        for name, weights in state_dict.items():
-            if 'pointwise' in name:
-                state_dict[name] = weights.unsqueeze(-1).unsqueeze(-1)
-        model.load_state_dict(state_dict)
+        if state_dict is not None:
+            # "model." prefix 제거 (이 부분이 현재 없음!)
+            from collections import OrderedDict
+            new_state_dict = OrderedDict()
+            for k, v in state_dict.items():
+                if k.startswith('model.'):
+                    name = k[6:]  # "model." 제거 (6글자)
+                    new_state_dict[name] = v
+                else:
+                    new_state_dict[k] = v
+            
+            # FC layer 키 이름 수정
+            if 'last_linear.1.weight' in new_state_dict:
+                new_state_dict['fc.weight'] = new_state_dict.pop('last_linear.1.weight')
+            if 'last_linear.1.bias' in new_state_dict:
+                new_state_dict['fc.bias'] = new_state_dict.pop('last_linear.1.bias')
+            
+            # 수정된 state_dict로 로딩
+            model.load_state_dict(new_state_dict, strict=False)
+        
         model.last_linear = model.fc
         del model.fc
     return model
 
+
+
 def return_pytorch04_meso():
     model = Meso4()
     return model
+
+
+
 
 class TransferModel(nn.Module):
     """
@@ -56,8 +77,8 @@ class TransferModel(nn.Module):
         super(TransferModel, self).__init__()
         self.modelchoice = modelchoice
         if modelchoice == 'xception':
-            self.model = return_pytorch04_xception()
-            # Replace fc
+            self.model = return_pytorch04_xception(pretrained=False)  # pretrained=False로 변경
+            # FC layer를 먼저 교체
             num_ftrs = self.model.last_linear.in_features
             if not dropout:
                 self.model.last_linear = nn.Linear(num_ftrs, num_out_classes)
@@ -67,6 +88,8 @@ class TransferModel(nn.Module):
                     nn.Dropout(p=dropout),
                     nn.Linear(num_ftrs, num_out_classes)
                 )
+            # 이제 가중치 로딩
+            self.model = self.load_pretrained_weights(self.model)
         elif modelchoice == 'resnet50' or modelchoice == 'resnet18':
             if modelchoice == 'resnet50':
                 self.model = torchvision.models.resnet50(pretrained=True)
@@ -83,6 +106,43 @@ class TransferModel(nn.Module):
                 )
         else:
             raise Exception('Choose valid model, e.g. resnet50')
+
+    def load_pretrained_weights(self, model):
+        pos_model_paths = [
+            '/content/AdversarialDeepFakes/faceforensics++_models_subset/xception/ffpp_c23.pth',
+            # ... 기존 경로들
+        ]
+        
+        state_dict = None
+        for model_path in pos_model_paths:
+            if os.path.exists(model_path):
+                state_dict = torch.load(model_path)
+                break
+        
+        if state_dict is not None:
+            # "model." prefix 제거
+            from collections import OrderedDict
+            new_state_dict = OrderedDict()
+            for k, v in state_dict.items():
+                if k.startswith('model.'):
+                    name = k[6:]  # "model." 제거
+                    new_state_dict[name] = v
+                else:
+                    new_state_dict[k] = v
+            
+            # FC layer 키 제거 (크기가 다르므로)
+            keys_to_remove = []
+            for key in new_state_dict.keys():
+                if 'last_linear' in key or 'fc' in key:
+                    keys_to_remove.append(key)
+            
+            for key in keys_to_remove:
+                del new_state_dict[key]
+            
+            # 가중치 로딩 (FC layer 제외)
+            model.load_state_dict(new_state_dict, strict=False)
+        
+        return model
 
     def set_trainable_up_to(self, boolean, layername="Conv2d_4a_3x3"):
         """
