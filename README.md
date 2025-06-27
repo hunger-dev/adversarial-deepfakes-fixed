@@ -1,3 +1,7 @@
+# NOTICE !!
+This repository is based on [paarthneekhara/AdversarialDeepFakes](https://github.com/paarthneekhara/AdversarialDeepFakes) with minor modifications.
+Please refer to the original repositories for more details.
+
 # Adversarial Deepfakes
 
 [Paper](https://arxiv.org/abs/2002.12749), [Website](https://adversarialdeepfakes.github.io/)
